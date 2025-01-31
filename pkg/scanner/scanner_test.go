@@ -133,12 +133,11 @@ func TestNumber(t *testing.T) {
 		{INTEGER, "0B1110", "0B1110", ""},
 
 		{INTEGER, "0b", "0b", "binary literal has no digits"},
-		// {INTEGER, "0b0190", "0b0190", "invalid digit '9' in binary literal"},
 		{INTEGER, "0b01a0", "0b01 a0", ""}, // only accept 0-9
 
-		// {FLOAT, "0b.", "0b.", "invalid radix point in binary literal"},
-		// {FLOAT, "0b.1", "0b.1", "invalid radix point in binary literal"},
-		// {FLOAT, "0b1.0", "0b1.0", "invalid radix point in binary literal"},
+		{FLOAT, "0b.", "0b.", "invalid radix point in binary literal"},
+		{FLOAT, "0b.1", "0b.1", "invalid radix point in binary literal"},
+		{FLOAT, "0b1.0", "0b1.0", "invalid radix point in binary literal"},
 
 		// octals
 		{INTEGER, "0o0", "0o0", ""},
@@ -150,18 +149,12 @@ func TestNumber(t *testing.T) {
 		// {INTEGER, "0o1293", "0o1293", "invalid digit '9' in octal literal"},
 		{INTEGER, "0o12a3", "0o12 a3", ""}, // only accept 0-9
 
-		// {FLOAT, "0o.", "0o.", "invalid radix point in octal literal"},
-		// {FLOAT, "0o.2", "0o.2", "invalid radix point in octal literal"},
-		// {FLOAT, "0o1.2", "0o1.2", "invalid radix point in octal literal"},
+		{FLOAT, "0o.", "0o.", "invalid radix point in octal literal"},
+		{FLOAT, "0o.2", "0o.2", "invalid radix point in octal literal"},
+		{FLOAT, "0o1.2", "0o1.2", "invalid radix point in octal literal"},
 
 		// 0-octals not allowed
 		{INTEGER, "0123", "0123", "leading zeros in decimal integer literals are not permitted"},
-
-		// {INTEGER, "08123", "08123", "invalid digit '8' in octal literal"},
-		// {INTEGER, "01293", "01293", "invalid digit '9' in octal literal"},
-		// {INTEGER, "0F.", "0 F .", ""}, // only accept 0-9
-		// {INTEGER, "0123F.", "0123 F .", ""},
-		// {INTEGER, "0123456x", "0123456 x", ""},
 
 		// decimals
 		{INTEGER, "0", "0", ""},
@@ -175,9 +168,9 @@ func TestNumber(t *testing.T) {
 		{FLOAT, "123.", "123.", ""},
 		{FLOAT, "0123.", "0123.", ""},
 
-		// {FLOAT, ".0", ".0", ""},
-		// {FLOAT, ".123", ".123", ""},
-		// {FLOAT, ".0123", ".0123", ""},
+		{FLOAT, ".0", ".0", ""},
+		{FLOAT, ".123", ".123", ""},
+		{FLOAT, ".0123", ".0123", ""},
 
 		{FLOAT, "0.0", "0.0", ""},
 		{FLOAT, "123.123", "123.123", ""},
@@ -191,9 +184,9 @@ func TestNumber(t *testing.T) {
 		{FLOAT, "123.E-10", "123.E-10", ""},
 		{FLOAT, "0123.e123", "0123.e123", ""},
 
-		// {FLOAT, ".0e-1", ".0e-1", ""},
-		// {FLOAT, ".123E+10", ".123E+10", ""},
-		// {FLOAT, ".0123E123", ".0123E123", ""},
+		{FLOAT, ".0e-1", ".0e-1", ""},
+		{FLOAT, ".123E+10", ".123E+10", ""},
+		{FLOAT, ".0123E123", ".0123E123", ""},
 
 		{FLOAT, "0.0e1", "0.0e1", ""},
 		{FLOAT, "123.123E-10", "123.123E-10", ""},
@@ -211,6 +204,10 @@ func TestNumber(t *testing.T) {
 
 		{INTEGER, "0x", "0x", "hexadecimal literal has no digits"},
 		{INTEGER, "0x1g", "0x1 g", ""},
+
+		{FLOAT, "0x.", "0x.", "invalid radix point in hexadecimal literal"},
+		{FLOAT, "0x.1", "0x.1", "invalid radix point in hexadecimal literal"},
+		{FLOAT, "0x1.0", "0x1.0", "invalid radix point in hexadecimal literal"},
 
 		// separators
 		{INTEGER, "0b_1000_0001", "0b_1000_0001", ""},

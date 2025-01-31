@@ -290,13 +290,18 @@ func (s *Scanner) scanNumber() Token {
 		}
 	}
 
-	if f := s.digits(base, true); f&invalidDigitSep != 0 {
-		flags |= invalidDigitSep
-	} else if f&noDigits != 0 && base != decimal {
-		s.errf(s.pos, "%s literal has no digits", litname(base))
+	if s.current != '.' {
+		if f := s.digits(base, true); f&invalidDigitSep != 0 {
+			flags |= invalidDigitSep
+		} else if f&noDigits != 0 && base != decimal {
+			s.errf(s.pos, "%s literal has no digits", litname(base))
+		}
 	}
 
 	if s.current == '.' {
+		if base != decimal {
+			s.errf(s.end, "invalid radix point in %s literal", litname(base))
+		}
 		s.next()
 		kind = FLOAT
 		if f := s.digits(decimal, false); f&invalidDigitSep != 0 {
@@ -394,7 +399,7 @@ func (s *Scanner) Scan() Token {
 	switch {
 	case isIdentifierBeginning(current):
 		return s.scanIdentifier()
-	case isDecimal(current):
+	case isDecimal(current) || current == '.' && isDecimal(rune(s.peek())):
 		return s.scanNumber()
 	case current == '/' && rune(s.peek()) == '/':
 		return s.scanComment()

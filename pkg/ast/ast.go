@@ -63,6 +63,17 @@ type (
 		Type    *Type
 	}
 
+	Field struct {
+		Name *Name
+		Type *Type
+	}
+
+	StructDef struct {
+		StructPos scanner.Pos
+		Name      *Name
+		Fields    []*Field
+	}
+
 	Module struct {
 		Nodes []Node
 	}
@@ -78,4 +89,6 @@ func (x *Import) Pos() scanner.Pos     { return x.ImportPos }
 func (x *ConstDef) Pos() scanner.Pos   { return x.ConstPos }
 func (x *Type) Pos() scanner.Pos       { return x.Name.Pos() }
 func (x *TypeDef) Pos() scanner.Pos    { return x.TypePos }
+func (x *Field) Pos() scanner.Pos      { return x.Name.Pos() }
+func (x *StructDef) Pos() scanner.Pos  { return x.StructPos }
 func (x *Module) Pos() scanner.Pos     { return scanner.Pos{Line: 0, Column: 0} }

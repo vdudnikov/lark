@@ -196,8 +196,12 @@ func (p *parser) parseBasicLit() ast.Node {
 }
 
 func (p *parser) parseName() *ast.Name {
-	ident := p.expect(scanner.IDENTIFIER)
-	return &ast.Name{NamePos: ident.Pos, Name: ident.Value}
+	identifier := p.expect(scanner.IDENTIFIER)
+	name := "_"
+	if identifier.Kind == scanner.IDENTIFIER {
+		name = identifier.Value
+	}
+	return &ast.Name{NamePos: identifier.Pos, Name: name}
 }
 
 func (p *parser) parseQualName() *ast.QualName {
@@ -227,16 +231,118 @@ func (p *parser) parseBinaryExpr(lhs ast.Node, prec int) ast.Node {
 	return &ast.BinaryExpr{Op: op.Kind, Lhs: lhs, Rhs: p.parseExpr(prec)}
 }
 
+func (p *parser) parseImport() *ast.Import {
+	importKw := p.expect(scanner.IMPORT)
+	path := p.expect(scanner.STRING)
+	var alias *ast.Name
+	if p.accept(scanner.AS) {
+		alias = p.parseName()
+	}
+
+	return &ast.Import{
+		ImportPos: importKw.Pos,
+		Path:      &ast.BasicLit{Kind: scanner.STRING, ValuePos: path.Pos, Value: path.Value},
+		Alias:     alias,
+	}
+}
+
+func (p *parser) parseConstDef() *ast.ConstDef {
+	constKw := p.expect(scanner.CONST)
+	name := p.parseName()
+	p.expect(scanner.ASSIGN)
+	expr := p.parseExpr(precNone)
+
+	return &ast.ConstDef{ConstPos: constKw.Pos, Name: name, Expr: expr}
+}
+
+func (p *parser) parseType() *ast.Type {
+	parseItem := func() ast.Node {
+		return p.parseType()
+	}
+
+	name := p.parseQualName()
+	var args []ast.Node
+	if p.accept(scanner.LEFT_BRACK) {
+		args = p.parseItems(parseItem, scanner.RIGHT_BRACK)
+	}
+
+	return &ast.Type{Name: name, Args: args}
+}
+
+func (p *parser) parseTypeDef() *ast.TypeDef {
+	typeKw := p.expect(scanner.TYPE)
+	name := p.parseName()
+	p.expect(scanner.ASSIGN)
+	anytype := p.parseType()
+
+	return &ast.TypeDef{TypePos: typeKw.Pos, Name: name, Type: anytype}
+}
+
+func (p *parser) parseField() *ast.Field {
+	name := p.parseName()
+	p.expect(scanner.COLON)
+	anytype := p.parseType()
+
+	return &ast.Field{Name: name, Type: anytype}
+}
+
+func (p *parser) parseStructDef() *ast.StructDef {
+	structKw := p.expect(scanner.STRUCT)
+	name := p.parseName()
+	p.expect(scanner.LEFT_BRACE)
+
+	var fields []*ast.Field
+	for p.current.Kind != scanner.RIGHT_BRACE && p.current.Kind != scanner.ENDMARKER {
+		fields = append(fields, p.parseField())
+		p.expect(scanner.SEMICOLON)
+	}
+
+	p.expect(scanner.RIGHT_BRACE)
+
+	return &ast.StructDef{StructPos: structKw.Pos, Name: name, Fields: fields}
+}
+
+func (p *parser) parse() *ast.Module {
+	var nodes []ast.Node
+	ndef := 0
+	for p.current.Kind != scanner.ENDMARKER {
+		var node ast.Node
+		switch p.current.Kind {
+		case scanner.IMPORT:
+			node = p.parseImport()
+			if ndef > 0 {
+				p.errf(node.Pos(), "imports must appear before other declarations")
+			}
+		default:
+			ndef++
+			switch p.current.Kind {
+			case scanner.CONST:
+				node = p.parseConstDef()
+			case scanner.TYPE:
+				node = p.parseTypeDef()
+			case scanner.STRUCT:
+				node = p.parseStructDef()
+			default:
+				node = &ast.BadNode{From: p.current.Pos}
+				p.expectMsg("definition")
+				p.next()
+			}
+		}
+
+		nodes = append(nodes, node)
+		p.expect(scanner.SEMICOLON)
+	}
+
+	return &ast.Module{Nodes: nodes}
+}
+
 func Parse(text []byte) Parsed {
 	p := &parser{}
 	p.init(text)
+
 	return Parsed{
-		Module: p.parseExpr(precNone),
+		Module: p.parse(),
 		Lines:  p.scanner.Lines(),
 		Errors: p.errors,
 	}
-	// module := p.parse()
-	// module := {Nodes: []Node{p.parseExpr()}}
-
-	// return Parsed{module, p.scanner.Lines(), p.errors}
 }

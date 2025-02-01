@@ -42,6 +42,12 @@ func (p *printer) Visit(node Node) Visitor {
 	case *TypeDef:
 		p.printf("TypeDef: Pos=%v", n.Pos())
 		indent++
+	case *Field:
+		p.printf("Field: Pos=%v", n.Pos())
+		indent++
+	case *StructDef:
+		p.printf("StructDef: Pos=%v", n.Pos())
+		indent++
 	case *Module:
 		// nothing to do
 	default:
@@ -49,6 +55,9 @@ func (p *printer) Visit(node Node) Visitor {
 	}
 
 	return &printer{indent, p.writer}
+}
+
+func (p *printer) Exit(node Node) {
 }
 
 func (p *printer) printf(format string, args ...any) {

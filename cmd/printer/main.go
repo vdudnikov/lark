@@ -29,12 +29,14 @@ func main() {
 
 	if len(parsed.Errors) > 0 {
 		for _, err := range parsed.Errors {
-			line := parsed.Lines[err.Pos.Line]
 			fmt.Fprintf(os.Stderr, "%s:%d:%d: %s\n", filename, err.Pos.Line+1, err.Pos.Column+1, err.Message)
-			fmt.Fprintf(os.Stderr, "  %s\n", line)
-			fmt.Fprint(os.Stderr, strings.Repeat(" ", err.Pos.Column+2)+"^\n")
+			if err.Pos.Line < len(parsed.Lines) {
+				line := parsed.Lines[err.Pos.Line]
+				fmt.Fprintf(os.Stderr, "  %s\n", line)
+				fmt.Fprint(os.Stderr, strings.Repeat(" ", err.Pos.Column+2)+"^\n")
+			}
 		}
 	} else {
-		ast.Print(parsed.Root)
+		ast.Print(parsed.Module)
 	}
 }

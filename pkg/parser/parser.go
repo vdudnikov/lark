@@ -13,7 +13,8 @@ type ErrorInfo struct {
 }
 
 type Parsed struct {
-	Root   ast.Node
+	// Module *ast.Module
+	Module ast.Node
 	Lines  []string
 	Errors []ErrorInfo
 }
@@ -53,7 +54,7 @@ func (p *parser) init(text []byte) {
 		scanner.FALSE:      {p.parseBasicLit, nil, precNone},
 		scanner.STRING:     {p.parseBasicLit, nil, precNone},
 		scanner.INTEGER:    {p.parseBasicLit, nil, precNone},
-		scanner.IDENTIFIER: {p.parseQualName, nil, precNone},
+		scanner.IDENTIFIER: {p.parseQualNameExpr, nil, precNone},
 		scanner.FLOAT:      {p.parseBasicLit, nil, precNone},
 		scanner.MINUS:      {p.parseUnaryExpr, p.parseBinaryExpr, precTerm},
 		scanner.NOT:        {p.parseUnaryExpr, nil, precNone},
@@ -137,13 +138,30 @@ func (p *parser) expect(kind scanner.TokenKind) scanner.Token {
 	return token
 }
 
-func (p *parser) accept(kind scanner.TokenKind) *scanner.Token {
-	token := p.current
-	if token.Kind == kind {
+func (p *parser) accept(kind scanner.TokenKind) bool {
+	if p.current.Kind == kind {
 		p.next()
-		return &token
+		return true
 	}
-	return nil
+	return false
+}
+
+func (p *parser) parseItems(nud nudFn, stop scanner.TokenKind) []ast.Node {
+	if p.accept(stop) {
+		return nil
+	}
+
+	items := []ast.Node{nud()}
+	for p.accept(scanner.COMMA) {
+		// trailing comma
+		if p.current.Kind == stop {
+			break
+		}
+		items = append(items, nud())
+	}
+
+	p.expect(stop)
+	return items
 }
 
 func (p *parser) parseExpr(prec int) ast.Node {
@@ -152,7 +170,7 @@ func (p *parser) parseExpr(prec int) ast.Node {
 	if prefRule.nud == nil {
 		p.expectMsg("expression")
 		p.next()
-		return &ast.BadExpr{From: token.Pos}
+		return &ast.BadNode{From: token.Pos}
 	}
 
 	root := prefRule.nud()
@@ -182,14 +200,18 @@ func (p *parser) parseName() *ast.Name {
 	return &ast.Name{NamePos: ident.Pos, Name: ident.Value}
 }
 
-func (p *parser) parseQualName() ast.Node {
+func (p *parser) parseQualName() *ast.QualName {
 	tmp := p.parseName()
-	if p.accept(scanner.DOT) != nil {
+	if p.accept(scanner.DOT) {
 		name := p.parseName()
-		return &ast.QualName{NodePos: tmp.NamePos, Name: name.Name, Module: tmp.Name}
+		return &ast.QualName{NodePos: tmp.NamePos, Name: name, Module: tmp}
 	}
 
-	return &ast.QualName{NodePos: tmp.NamePos, Name: tmp.Name}
+	return &ast.QualName{NodePos: tmp.NamePos, Name: tmp}
+}
+
+func (p *parser) parseQualNameExpr() ast.Node {
+	return p.parseQualName()
 }
 
 func (p *parser) parseUnaryExpr() ast.Node {
@@ -208,7 +230,13 @@ func (p *parser) parseBinaryExpr(lhs ast.Node, prec int) ast.Node {
 func Parse(text []byte) Parsed {
 	p := &parser{}
 	p.init(text)
-	root := p.parseExpr(precNone)
+	return Parsed{
+		Module: p.parseExpr(precNone),
+		Lines:  p.scanner.Lines(),
+		Errors: p.errors,
+	}
+	// module := p.parse()
+	// module := {Nodes: []Node{p.parseExpr()}}
 
-	return Parsed{root, p.scanner.Lines(), p.errors}
+	// return Parsed{module, p.scanner.Lines(), p.errors}
 }

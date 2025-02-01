@@ -7,6 +7,10 @@ type Node interface {
 }
 
 type (
+	BadNode struct {
+		From scanner.Pos
+	}
+
 	BasicLit struct {
 		Kind     scanner.TokenKind
 		ValuePos scanner.Pos
@@ -20,12 +24,8 @@ type (
 
 	QualName struct {
 		NodePos scanner.Pos
-		Name    string
-		Module  string
-	}
-
-	BadExpr struct {
-		From scanner.Pos
+		Name    *Name
+		Module  *Name
 	}
 
 	UnaryExpr struct {
@@ -39,11 +39,43 @@ type (
 		Lhs Node
 		Rhs Node
 	}
+
+	Import struct {
+		ImportPos scanner.Pos
+		Path      *BasicLit
+		Alias     *Name
+	}
+
+	ConstDef struct {
+		ConstPos scanner.Pos
+		Name     *Name
+		Expr     Node
+	}
+
+	Type struct {
+		Name *QualName
+		Args []Node
+	}
+
+	TypeDef struct {
+		TypePos scanner.Pos
+		Name    *Name
+		Type    *Type
+	}
+
+	Module struct {
+		Nodes []Node
+	}
 )
 
 func (x *BasicLit) Pos() scanner.Pos   { return x.ValuePos }
 func (x *Name) Pos() scanner.Pos       { return x.NamePos }
 func (x *QualName) Pos() scanner.Pos   { return x.NodePos }
-func (x *BadExpr) Pos() scanner.Pos    { return x.From }
+func (x *BadNode) Pos() scanner.Pos    { return x.From }
 func (x *UnaryExpr) Pos() scanner.Pos  { return x.OpPos }
 func (x *BinaryExpr) Pos() scanner.Pos { return x.Lhs.Pos() }
+func (x *Import) Pos() scanner.Pos     { return x.ImportPos }
+func (x *ConstDef) Pos() scanner.Pos   { return x.ConstPos }
+func (x *Type) Pos() scanner.Pos       { return x.Name.Pos() }
+func (x *TypeDef) Pos() scanner.Pos    { return x.TypePos }
+func (x *Module) Pos() scanner.Pos     { return scanner.Pos{Line: 0, Column: 0} }

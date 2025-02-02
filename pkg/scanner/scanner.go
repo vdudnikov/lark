@@ -95,7 +95,6 @@ func (s *Scanner) next() {
 				s.lines = append(s.lines, s.line.String())
 				s.line.Reset()
 			}
-		} else {
 			s.done = true
 		}
 	case '\n':
@@ -359,7 +358,7 @@ func (s *Scanner) escape() {
 		s.next()
 		d := digitValue(current)
 		if d == 16 {
-			s.errf(pos, "illegal hexdecimal digit %#U in escape sequence", current)
+			s.errf(pos, "illegal hexadecimal digit %#U in escape sequence", current)
 			return
 		}
 

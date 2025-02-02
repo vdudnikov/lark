@@ -5,13 +5,6 @@ import (
 	"testing"
 )
 
-func scan(input string, t *testing.T) Token {
-	s := New([]byte(input), func(pos Pos, msg string) {
-		t.Errorf("error at %d:%d, %s\n", pos.Line+1, pos.Column+1, msg)
-	})
-	return s.Scan()
-}
-
 func TestNonLiteral(t *testing.T) {
 	type testCase struct {
 		input string
@@ -63,7 +56,7 @@ func TestNonLiteral(t *testing.T) {
 
 	for _, test := range tests {
 		s := New([]byte(test.input), func(pos Pos, msg string) {
-			t.Errorf("error at %d:%d, %s\n", pos.Line+1, pos.Column+1, msg)
+			t.Errorf("%q: got error %q", test.input, msg)
 		})
 
 		token := s.Scan()
@@ -81,39 +74,64 @@ func TestIdentifier(t *testing.T) {
 	}
 
 	for _, input := range tests {
-		token := scan(input, t)
-		if token.Kind != IDENTIFIER {
-			t.Errorf("expected IDENTIFIER but found '%s'", token.Kind)
-		} else if token.Value != input {
-			t.Errorf("expected '%s' but found '%s'", input, token.Value)
-		}
+		s := New([]byte(input), func(pos Pos, msg string) {
+			t.Errorf("%q: got error %q", input, msg)
+		})
 
+		token := s.Scan()
+		if token.Kind != IDENTIFIER {
+			t.Errorf("%q: got token %s; want %s", input, token.Kind, IDENTIFIER)
+		}
 	}
 }
 
 func TestString(t *testing.T) {
-	tests := []string{
-		"\"\\a\"",
-		"\"\\b\"",
-		"\"\\f\"",
-		"\"\\n\"",
-		"\"\\r\"",
-		"\"\\t\"",
-		"\"\\v\"",
-		"\"\\\\\"",
-		"\"\\\"\"",
-		"\"\\xff\"",
-		"\"\\xFF\"",
-		"\"\\uFFFF\"",
-		"\"\\U0010FFFF\"",
+	type testCase struct {
+		input  string
+		errMsg string
 	}
 
-	for _, input := range tests {
-		token := scan(input, t)
+	tests := []testCase{
+		{`"\a"`, ""},
+		{`"\b"`, ""},
+		{`"\f"`, ""},
+		{`"\n"`, ""},
+		{`"\r"`, ""},
+		{`"\t"`, ""},
+		{`"\v"`, ""},
+		{`"\\"`, ""},
+		{`"\""`, ""},
+		{`"\xff"`, ""},
+		{`"\xFF"`, ""},
+		{`"\uFFFF"`, ""},
+		{`"\U0010FFFF"`, ""},
+		{`"\U0010FFFF"`, ""},
+		{`"foo`, "unterminated string"},
+		{`"\y"`, "unknown escape sequence"},
+		{`"\xYY"`, "illegal hexadecimal digit U+0059 'Y' in escape sequence"},
+		{`"\uD800"`, "escape sequence is invalid unicode code point"},
+		{`"\uDFFF"`, "escape sequence is invalid unicode code point"},
+		{`"\U00110000"`, "escape sequence is invalid unicode code point"},
+	}
+
+	for _, test := range tests {
+		errMsg := ""
+		s := New([]byte(test.input), func(pos Pos, msg string) {
+			if errMsg == "" {
+				errMsg = msg
+			}
+		})
+
+		token := s.Scan()
 		if token.Kind != STRING {
-			t.Errorf("expected STRING but found %s", token.Kind)
-		} else if token.Value != input {
-			t.Errorf("expected '%s' but found '%s'", input, token.Value)
+			t.Errorf("%q: got token %s; want %s", test.input, token.Value, STRING)
+		}
+		if errMsg != test.errMsg {
+			t.Errorf("%q: got error %q; want %q", test.input, errMsg, test.errMsg)
+		}
+
+		if token.Value != test.input {
+			t.Errorf("%q: got literal %q (%s); want %s", test.input, token.Value, token.Kind, test.input)
 		}
 	}
 }

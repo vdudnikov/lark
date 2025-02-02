@@ -22,8 +22,12 @@ func (p *printer) Visit(node Node) Visitor {
 	case *Name:
 		p.printf("Name: Name=%s, Pos=%v", n.Name, node.Pos())
 	case *QualName:
-		p.printf("QualName: Pos=%v", node.Pos())
-		indent++
+		module := ""
+		if n.Module != nil {
+			module = n.Module.Name
+		}
+		p.printf("QualName: Module=%s, Name=%s, Pos=%v", module, n.Name.Name, node.Pos())
+		return nil
 	case *UnaryExpr:
 		p.printf("UnaryExpr: Op=%s, Pos=%v", n.Op, node.Pos())
 		indent++
@@ -31,8 +35,12 @@ func (p *printer) Visit(node Node) Visitor {
 		p.printf("BinaryExpr: Op=%s, Pos=%v", n.Op, n.Pos())
 		indent++
 	case *Import:
-		p.printf("Import: Pos=%v", n.Pos())
-		indent++
+		alias := ""
+		if n.Alias != nil {
+			alias = n.Alias.Name
+		}
+		p.printf("Import: Path=%s, Alias=%s, Pos=%v", n.Path.Value, alias, n.Pos())
+        return nil
 	case *ConstDef:
 		p.printf("Const: Pos=%v", n.Pos())
 		indent++

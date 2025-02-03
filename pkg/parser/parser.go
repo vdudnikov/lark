@@ -12,11 +12,12 @@ type ErrorInfo struct {
 	Message string
 }
 
-type Parsed struct {
-	// Module *ast.Module
-	Module ast.Node
-	Lines  []string
-	Errors []ErrorInfo
+type ParsedFile struct {
+	File    *ast.File
+	Imports []*ast.ImportSpec
+	Scope   map[string]ast.Node
+	Lines   []string
+	Errors  []ErrorInfo
 }
 
 type nudFn func() ast.Node
@@ -43,6 +44,16 @@ type parser struct {
 	current       scanner.Token
 	exprRuleTable map[scanner.TokenKind]parseExprRule
 	errors        []ErrorInfo
+
+	// Error recovery
+	// (used to limit the number of calls to parser.advance
+	// w/o making scanning progress - avoids potential endless
+	// loops across multiple parser functions during error recovery)
+	syncPos scanner.Pos // last synchronization position
+	syncCnt int         // number of parser.advance calls without progress
+
+	imports []*ast.ImportSpec
+	scope   map[string]ast.Node
 }
 
 func (p *parser) init(text []byte) {
@@ -71,6 +82,8 @@ func (p *parser) init(text []byte) {
 		scanner.LT:         {nil, p.parseBinaryExpr, precCmp},
 		scanner.NEQ:        {nil, p.parseBinaryExpr, precCmp},
 	}
+
+	p.scope = make(map[string]ast.Node)
 
 	p.next()
 }
@@ -146,31 +159,57 @@ func (p *parser) accept(kind scanner.TokenKind) bool {
 	return false
 }
 
-func (p *parser) parseItems(nud nudFn, stop scanner.TokenKind) []ast.Node {
-	if p.accept(stop) {
-		return nil
-	}
-
-	items := []ast.Node{nud()}
-	for p.accept(scanner.COMMA) {
-		// trailing comma
-		if p.current.Kind == stop {
-			break
+func (p *parser) addName(name *ast.Name, node ast.Node) {
+	if name.Name != "@" {
+		if _, ok := p.scope[name.Name]; ok {
+			p.errf(name.Pos(), "name '%s' is already used", name.Name)
+		} else {
+			p.scope[name.Name] = node
 		}
-		items = append(items, nud())
 	}
-
-	p.expect(stop)
-	return items
 }
 
+var semiOnly = map[scanner.TokenKind]bool{
+	scanner.SEMICOLON: true,
+}
+
+var declStart = map[scanner.TokenKind]bool{
+	scanner.IMPORT: true,
+	scanner.CONST:  true,
+	scanner.TYPE:   true,
+}
+
+// sync consumes tokens until the current token is in the 'to' set, or
+// scanner.ENDMARKER. For error recovery.
+func (p *parser) sync(to map[scanner.TokenKind]bool) {
+	for ; p.current.Kind != scanner.ENDMARKER; p.next() {
+		token := p.current
+		if to[token.Kind] {
+			if token.Pos == p.syncPos && p.syncCnt < 10 {
+				p.syncCnt++
+				return
+			}
+			if token.Pos.Greater(p.syncPos) {
+				p.syncPos = p.current.Pos
+				p.syncCnt = 0
+				return
+			}
+		}
+	}
+}
+
+// parseExpr parses an expression using the TDOP (Top-Down Operator Precedence)
+// method. It processes prefix (nud) and infix (led) rules based on token
+// precedence to construct an AST. If the current token has no valid prefix
+// rule, an error node is returned. The function ensures correct operator
+// precedence handling by iterating while the next token has a higher precedence.
 func (p *parser) parseExpr(prec int) ast.Node {
 	token := p.current
 	prefRule := p.exprRuleTable[token.Kind]
 	if prefRule.nud == nil {
 		p.expectMsg("expression")
 		p.next()
-		return &ast.BadNode{From: token.Pos}
+		return &ast.BadNode{From: token.Pos, To: p.current.Pos}
 	}
 
 	root := prefRule.nud()
@@ -197,7 +236,7 @@ func (p *parser) parseBasicLit() ast.Node {
 
 func (p *parser) parseName() *ast.Name {
 	identifier := p.expect(scanner.IDENTIFIER)
-	name := "_"
+	name := "@"
 	if identifier.Kind == scanner.IDENTIFIER {
 		name = identifier.Value
 	}
@@ -231,118 +270,82 @@ func (p *parser) parseBinaryExpr(lhs ast.Node, prec int) ast.Node {
 	return &ast.BinaryExpr{Op: op.Kind, Lhs: lhs, Rhs: p.parseExpr(prec)}
 }
 
-func (p *parser) parseImport() *ast.Import {
-	importKw := p.expect(scanner.IMPORT)
-	path := p.expect(scanner.STRING)
+func (p *parser) parseImportSpec() ast.Node {
+	token := p.current
+	var path string
+	if token.Kind == scanner.STRING {
+		path = token.Value
+		p.next()
+	} else {
+		p.err(token.Pos, "import path must be a string")
+		p.sync(semiOnly)
+	}
+
 	var alias *ast.Name
 	if p.accept(scanner.AS) {
 		alias = p.parseName()
 	}
 
-	return &ast.Import{
-		ImportPos: importKw.Pos,
-		Path:      &ast.BasicLit{Kind: scanner.STRING, ValuePos: path.Pos, Value: path.Value},
-		Alias:     alias,
+	spec := &ast.ImportSpec{
+		Path:  &ast.BasicLit{ValuePos: token.Pos, Kind: scanner.STRING, Value: path},
+		Alias: alias,
 	}
+	p.imports = append(p.imports, spec)
+
+	return spec
 }
 
-func (p *parser) parseConstDef() *ast.ConstDef {
-	constKw := p.expect(scanner.CONST)
+func (p *parser) parseConstSpec() ast.Node {
 	name := p.parseName()
 	p.expect(scanner.ASSIGN)
 	expr := p.parseExpr(precNone)
 
-	return &ast.ConstDef{ConstPos: constKw.Pos, Name: name, Expr: expr}
+	spec := &ast.ConstSpec{Name: name, Expr: expr}
+	p.addName(name, spec)
+
+	return spec
 }
 
-func (p *parser) parseType() *ast.Type {
-	parseItem := func() ast.Node {
-		return p.parseType()
+func (p *parser) parseDecl() ast.Node {
+	var parse nudFn
+	token := p.current
+	switch token.Kind {
+	case scanner.IMPORT:
+		parse = p.parseImportSpec
+	case scanner.CONST:
+		parse = p.parseConstSpec
+	default:
+		p.expectMsg("declaration")
+		p.sync(declStart)
+		return &ast.BadNode{From: token.Pos, To: p.current.Pos}
 	}
 
-	name := p.parseQualName()
-	var args []ast.Node
-	if p.accept(scanner.LEFT_BRACK) {
-		args = p.parseItems(parseItem, scanner.RIGHT_BRACK)
-	}
+	// consume keyword
+	p.next()
+	decl := parse()
+	p.expect(scanner.SEMICOLON)
 
-	return &ast.Type{Name: name, Args: args}
+	return decl
 }
 
-func (p *parser) parseTypeDef() *ast.TypeDef {
-	typeKw := p.expect(scanner.TYPE)
-	name := p.parseName()
-	p.expect(scanner.ASSIGN)
-	anytype := p.parseType()
-
-	return &ast.TypeDef{TypePos: typeKw.Pos, Name: name, Type: anytype}
-}
-
-func (p *parser) parseField() *ast.Field {
-	name := p.parseName()
-	p.expect(scanner.COLON)
-	anytype := p.parseType()
-
-	return &ast.Field{Name: name, Type: anytype}
-}
-
-func (p *parser) parseStructDef() *ast.StructDef {
-	structKw := p.expect(scanner.STRUCT)
-	name := p.parseName()
-	p.expect(scanner.LEFT_BRACE)
-
-	var fields []*ast.Field
-	for p.current.Kind != scanner.RIGHT_BRACE && p.current.Kind != scanner.ENDMARKER {
-		fields = append(fields, p.parseField())
-		p.expect(scanner.SEMICOLON)
-	}
-
-	p.expect(scanner.RIGHT_BRACE)
-
-	return &ast.StructDef{StructPos: structKw.Pos, Name: name, Fields: fields}
-}
-
-func (p *parser) parse() *ast.Module {
+func (p *parser) parse() *ast.File {
 	var nodes []ast.Node
-	ndef := 0
 	for p.current.Kind != scanner.ENDMARKER {
-		var node ast.Node
-		switch p.current.Kind {
-		case scanner.IMPORT:
-			node = p.parseImport()
-			if ndef > 0 {
-				p.errf(node.Pos(), "imports must appear before other declarations")
-			}
-		default:
-			ndef++
-			switch p.current.Kind {
-			case scanner.CONST:
-				node = p.parseConstDef()
-			case scanner.TYPE:
-				node = p.parseTypeDef()
-			case scanner.STRUCT:
-				node = p.parseStructDef()
-			default:
-				node = &ast.BadNode{From: p.current.Pos}
-				p.expectMsg("definition")
-				p.next()
-			}
-		}
-
-		nodes = append(nodes, node)
-		p.expect(scanner.SEMICOLON)
+		nodes = append(nodes, p.parseDecl())
 	}
 
-	return &ast.Module{Nodes: nodes}
+	return &ast.File{Nodes: nodes}
 }
 
-func Parse(text []byte) Parsed {
+func Parse(text []byte) ParsedFile {
 	p := &parser{}
 	p.init(text)
 
-	return Parsed{
-		Module: p.parse(),
-		Lines:  p.scanner.Lines(),
-		Errors: p.errors,
+	return ParsedFile{
+		File:    p.parse(),
+		Imports: p.imports,
+		Scope:   p.scope,
+		Lines:   p.scanner.Lines(),
+		Errors:  p.errors,
 	}
 }

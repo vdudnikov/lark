@@ -9,11 +9,12 @@ type Node interface {
 type (
 	BadNode struct {
 		From scanner.Pos
+		To   scanner.Pos
 	}
 
 	BasicLit struct {
-		Kind     scanner.TokenKind
 		ValuePos scanner.Pos
+		Kind     scanner.TokenKind
 		Value    string
 	}
 
@@ -40,16 +41,14 @@ type (
 		Rhs Node
 	}
 
-	Import struct {
-		ImportPos scanner.Pos
-		Path      *BasicLit
-		Alias     *Name
+	ImportSpec struct {
+		Path  *BasicLit
+		Alias *Name
 	}
 
-	ConstDef struct {
-		ConstPos scanner.Pos
-		Name     *Name
-		Expr     Node
+	ConstSpec struct {
+		Name *Name
+		Expr Node
 	}
 
 	Type struct {
@@ -57,7 +56,7 @@ type (
 		Args []Node
 	}
 
-	TypeDef struct {
+	TypeAlias struct {
 		TypePos scanner.Pos
 		Name    *Name
 		Type    *Type
@@ -68,13 +67,13 @@ type (
 		Type *Type
 	}
 
-	StructDef struct {
+	Struct struct {
 		StructPos scanner.Pos
 		Name      *Name
 		Fields    []*Field
 	}
 
-	Module struct {
+	File struct {
 		Nodes []Node
 	}
 )
@@ -85,10 +84,10 @@ func (x *QualName) Pos() scanner.Pos   { return x.NodePos }
 func (x *BadNode) Pos() scanner.Pos    { return x.From }
 func (x *UnaryExpr) Pos() scanner.Pos  { return x.OpPos }
 func (x *BinaryExpr) Pos() scanner.Pos { return x.Lhs.Pos() }
-func (x *Import) Pos() scanner.Pos     { return x.ImportPos }
-func (x *ConstDef) Pos() scanner.Pos   { return x.ConstPos }
+func (x *ImportSpec) Pos() scanner.Pos { return x.Path.Pos() }
+func (x *ConstSpec) Pos() scanner.Pos  { return x.Name.Pos() }
 func (x *Type) Pos() scanner.Pos       { return x.Name.Pos() }
-func (x *TypeDef) Pos() scanner.Pos    { return x.TypePos }
+func (x *TypeAlias) Pos() scanner.Pos  { return x.TypePos }
 func (x *Field) Pos() scanner.Pos      { return x.Name.Pos() }
-func (x *StructDef) Pos() scanner.Pos  { return x.StructPos }
-func (x *Module) Pos() scanner.Pos     { return scanner.Pos{Line: 0, Column: 0} }
+func (x *Struct) Pos() scanner.Pos     { return x.StructPos }
+func (x *File) Pos() scanner.Pos     { return scanner.Pos{Line: 0, Column: 0} }

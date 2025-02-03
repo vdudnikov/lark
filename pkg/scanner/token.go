@@ -40,10 +40,13 @@ const (
 	NOT
 
 	COMMENT
+
+	literal_beg
 	IDENTIFIER
 	STRING
 	INTEGER
 	FLOAT
+	literal_end
 
 	AS
 	CONST
@@ -119,8 +122,19 @@ func (kind TokenKind) String() string {
 	return "token(" + strconv.Itoa(int(kind)) + ")"
 }
 
+// FIXME: сомнительно, что этот метод нужен
+// IsLiteral returns true for kinds corresponding to identifiers
+// and basic type literals; it returns false otherwise.
+func (kind TokenKind) IsLiteral() bool {
+	return literal_beg < kind && kind < literal_end
+}
+
 type Pos struct {
 	Line, Column int
+}
+
+func (p Pos) Greater(other Pos) bool {
+	return p.Line > other.Line || p.Line == other.Line && p.Column > other.Column
 }
 
 type Token struct {

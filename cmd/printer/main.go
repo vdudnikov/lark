@@ -37,6 +37,6 @@ func main() {
 			}
 		}
 	} else {
-		ast.Print(parsed.Module)
+		ast.Print(parsed.File)
 	}
 }

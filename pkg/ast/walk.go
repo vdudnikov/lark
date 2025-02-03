@@ -28,12 +28,12 @@ func Walk(v Visitor, node Node) {
 	case *BinaryExpr:
 		Walk(v, n.Lhs)
 		Walk(v, n.Rhs)
-	case *Import:
+	case *ImportSpec:
 		Walk(v, n.Path)
 		if n.Alias != nil {
 			Walk(v, n.Alias)
 		}
-	case *ConstDef:
+	case *ConstSpec:
 		Walk(v, n.Name)
 		Walk(v, n.Expr)
 	case *Type:
@@ -41,18 +41,18 @@ func Walk(v Visitor, node Node) {
 		for _, child := range n.Args {
 			Walk(v, child)
 		}
-	case *TypeDef:
+	case *TypeAlias:
 		Walk(v, n.Name)
 		Walk(v, n.Type)
 	case *Field:
 		Walk(v, n.Name)
 		Walk(v, n.Type)
-	case *StructDef:
+	case *Struct:
 		Walk(v, n.Name)
 		for _, child := range n.Fields {
 			Walk(v, child)
 		}
-	case *Module:
+	case *File:
 		for _, child := range n.Nodes {
 			Walk(v, child)
 		}

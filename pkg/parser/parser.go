@@ -15,7 +15,7 @@ type ErrorInfo struct {
 type ParsedFile struct {
 	File    *ast.File
 	Imports []*ast.ImportSpec
-	Scope   map[string]ast.Node
+	Symtab  []Symbol
 	Lines   []string
 	Errors  []ErrorInfo
 }
@@ -39,6 +39,22 @@ const (
 	precPrimary  // bool, string, float, integer
 )
 
+type SymbolType int
+
+const (
+	ConstSym SymbolType = iota
+	FuncSym
+	InterfaceSym
+	StructSym
+	AliasSym
+)
+
+type Symbol struct {
+	Type SymbolType
+	Name *ast.Name
+	Decl ast.Node
+}
+
 type parser struct {
 	scanner       *scanner.Scanner
 	current       scanner.Token
@@ -53,7 +69,7 @@ type parser struct {
 	syncCnt int         // number of parser.advance calls without progress
 
 	imports []*ast.ImportSpec
-	scope   map[string]ast.Node
+	symtab  []Symbol
 }
 
 func (p *parser) init(text []byte) {
@@ -82,8 +98,6 @@ func (p *parser) init(text []byte) {
 		scanner.LT:         {nil, p.parseBinaryExpr, precCmp},
 		scanner.NEQ:        {nil, p.parseBinaryExpr, precCmp},
 	}
-
-	p.scope = make(map[string]ast.Node)
 
 	p.next()
 }
@@ -159,24 +173,17 @@ func (p *parser) accept(kind scanner.TokenKind) bool {
 	return false
 }
 
-func (p *parser) addName(name *ast.Name, node ast.Node) {
-	if name.Name != "@" {
-		if _, ok := p.scope[name.Name]; ok {
-			p.errf(name.Pos(), "name '%s' is already used", name.Name)
-		} else {
-			p.scope[name.Name] = node
-		}
-	}
-}
-
 var semiOnly = map[scanner.TokenKind]bool{
 	scanner.SEMICOLON: true,
 }
 
 var declStart = map[scanner.TokenKind]bool{
-	scanner.IMPORT: true,
-	scanner.CONST:  true,
-	scanner.TYPE:   true,
+	scanner.CONST:     true,
+	scanner.FUNC:      true,
+	scanner.IMPORT:    true,
+	scanner.INTERFACE: true,
+	scanner.STRUCT:    true,
+	scanner.TYPE:      true,
 }
 
 // sync consumes tokens until the current token is in the 'to' set, or
@@ -301,7 +308,7 @@ func (p *parser) parseConstSpec() ast.Node {
 	expr := p.parseExpr(precNone)
 
 	spec := &ast.ConstSpec{Name: name, Expr: expr}
-	p.addName(name, spec)
+	p.symtab = append(p.symtab, Symbol{Type: ConstSym, Name: name, Decl: spec})
 
 	return spec
 }
@@ -344,7 +351,7 @@ func Parse(text []byte) ParsedFile {
 	return ParsedFile{
 		File:    p.parse(),
 		Imports: p.imports,
-		Scope:   p.scope,
+		Symtab:  p.symtab,
 		Lines:   p.scanner.Lines(),
 		Errors:  p.errors,
 	}
